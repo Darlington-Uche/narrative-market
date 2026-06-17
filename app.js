@@ -1,10 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
    NARRATIVE MARKET — app.js
 ═══════════════════════════════════════════════════════════ */
-require('dotenv').config();
-
-// Initialize API FIRST
-const API = process.env.API;
+const API = process.env.API_K;
 
 // Then use it
 if (!API) {
