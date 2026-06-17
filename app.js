@@ -2,7 +2,7 @@
    NARRATIVE MARKET — app.js
 ═══════════════════════════════════════════════════════════ */
 
-const API = 'http://localhost:3001';
+const API = process.env.API;
 
 /* ══ STATE ══ */
 let state = {
