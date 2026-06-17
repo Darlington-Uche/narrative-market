@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
    NARRATIVE MARKET — app.js
 ═══════════════════════════════════════════════════════════ */
-const API = process.env.API_K;
+const API = 'https://narrative-market.onrender.com';
 
 // Then use it
 if (!API) {
