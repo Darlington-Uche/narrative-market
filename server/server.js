@@ -24,10 +24,18 @@ const {
 } = require('@solana/spl-token');
 
 /* ══ FIREBASE INIT ══ */
-const serviceAccount = require('./db.json');
+let serviceAccount;
+if (process.env.FIREBASE_CREDENTIALS) {
+  // Parse from environment variable
+  serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+  console.log('✅ Firebase credentials loaded from .env');
+} else {
+  // Fallback to local file
+  serviceAccount = require('./db.json');
+  console.log('⚠️  Firebase credentials loaded from db.json (fallback)');
+}
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
-
 /* ══ BS58 compat ══ */
 let bs58Encode, bs58Decode;
 try {
