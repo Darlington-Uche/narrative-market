@@ -3,7 +3,13 @@
 ═══════════════════════════════════════════════════════════ */
 require('dotenv').config();
 
+// Initialize API FIRST
 const API = process.env.API;
+
+// Then use it
+if (!API) {
+  throw new Error('API environment variable is missing');
+}
 
 /* ══ STATE ══ */
 let state = {
