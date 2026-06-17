@@ -1,16 +1,19 @@
-
 /* ═══════════════════════════════════════════════════════════
    NARRATIVE MARKET — server.js
    Express backend: narratives CRUD, buy/sell, price history,
-   likes, Firebase Firestore, Solana devnet
+   likes, Firebase Firestore, Solana devnet, Gemini AI Verification
 ═══════════════════════════════════════════════════════════ */
 
 'use strict';
+
+// Load environment variables FIRST
+require('dotenv').config();
 
 const express = require('express');
 const cors    = require('cors');
 const admin   = require('firebase-admin');
 const { v4: uuid } = require('uuid');
+const { GoogleGenAI } = require('@google/genai');
 
 const {
   Connection, Keypair, PublicKey, LAMPORTS_PER_SOL,
@@ -36,6 +39,7 @@ if (process.env.FIREBASE_CREDENTIALS) {
 }
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
+
 /* ══ BS58 compat ══ */
 let bs58Encode, bs58Decode;
 try {
@@ -47,15 +51,102 @@ try {
 
 /* ══ CONFIG ══ */
 const CFG = {
-  PORT:           3001,
+  PORT:           process.env.PORT || 3001,
   DEVNET_RPC:     'https://api.devnet.solana.com',
   FEE_SOL:        0.007,
   get FEE_LAM()   { return Math.floor(this.FEE_SOL * LAMPORTS_PER_SOL); },
-  INITIAL_PRICE:  0.10,   // USD
+  INITIAL_PRICE:  0.10,
   SUPPLY:         BigInt(1_000_000_000),
-  MM_KEY:         process.env.MM  || '',
+  MM_KEY:         process.env.MM || '',
   FEE_KEY:        process.env.FEE || '',
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+  GEMINI_MODEL:   process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  MIN_AI_SCORE:   0.3, // Minimum score to accept a narrative
 };
+
+// Initialize Gemini (new unified @google/genai SDK)
+let genAI = null;
+if (CFG.GEMINI_API_KEY) {
+  genAI = new GoogleGenAI({ apiKey: CFG.GEMINI_API_KEY });
+  console.log('✅ Gemini AI initialized');
+} else {
+  console.log('⚠️  Gemini API key not set - verification disabled');
+}
+
+/* ══════════════════════════════════════════════
+   GEMINI VERIFICATION FUNCTION
+══════════════════════════════════════════════ */
+async function verifyNarrativeWithGemini(text) {
+  if (!genAI) {
+    // If no Gemini key, fall back to basic validation
+    return { 
+      isValid: true, 
+      score: 0.5, 
+      reason: 'AI verification disabled - basic check passed' 
+    };
+  }
+
+  try {
+    const prompt = `
+You are a literary content moderator. Analyze the following text and determine if it is a proper STORY or NARRATIVE.
+
+A proper story/narrative must have:
+1. A clear narrative arc (beginning, middle, end or progression)
+2. Characters or a perspective
+3. A theme or message
+4. Literary quality (descriptive language, imagery, emotional depth)
+5. At least 30 words of meaningful content
+
+Rate the text on a scale of 0-1 (0 = not a story, 1 = excellent story).
+Also provide a brief reason for your rating.
+
+Text to analyze:
+"""
+${text}
+"""
+
+Respond in this exact JSON format:
+{
+  "isStory": true/false,
+  "score": 0-1,
+  "reason": "Brief explanation"
+}
+
+Only respond with the JSON, no other text.
+`;
+
+    // New @google/genai SDK: call generateContent directly off `models`,
+    // no getGenerativeModel() step, and no `.response` wrapper on the result.
+    const result = await genAI.models.generateContent({
+      model: CFG.GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const text_response = result.text;
+
+    // Clean the response defensively in case the model still wraps it in markdown
+    const cleanJson = text_response.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleanJson);
+    
+    return {
+      isValid: parsed.isStory === true,
+      score: parsed.score || 0,
+      reason: parsed.reason || 'AI verification completed',
+      raw: parsed
+    };
+  } catch (error) {
+    console.error('Gemini verification error:', error.message);
+    // Fallback: allow if verification fails (don't block users)
+    return { 
+      isValid: true, 
+      score: 0.5, 
+      reason: 'AI verification failed - allowing submission' 
+    };
+  }
+}
 
 /* ── In-memory price-walk tracker: { narrativeId: intervalHandle } ── */
 const activeWalks = {};
@@ -231,7 +322,8 @@ async function maybeAutoMigrate(narrativeId) {
    every few seconds, nudging price randomly up/down
    but always trending toward target, landing exactly
    on it when time runs out.
-══════════════════════════════════════════════ */function startPriceWalk(narrativeId, targetPrice, durationSeconds) {
+══════════════════════════════════════════════ */
+function startPriceWalk(narrativeId, targetPrice, durationSeconds) {
   stopPriceWalk(narrativeId);
 
   const tickMs = 3000;
@@ -462,6 +554,12 @@ function isAdmin(req) {
   return req.headers['x-admin-key'] === (process.env.ADMIN_KEY || 'narrative-admin-2024');
 }
 
+/* ─── PROFILE ROUTES ─── */
+async function getProfile(pubkey) {
+  const doc = await db.collection('profiles').doc(pubkey).get();
+  return doc.exists ? doc.data() : null;
+}
+
 /* ─── WALLET ROUTES (proxy to Solana) ─── */
 app.post('/api/create-wallet', (_, res) => {
   try {
@@ -546,29 +644,74 @@ app.get('/api/narratives/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-/* POST /api/narratives — create */
+/* POST /api/narratives — create with Gemini verification */
 app.post('/api/narratives', async (req, res) => {
   try {
     const { text, authorKey } = req.body;
-    if (!text || !authorKey) return res.status(400).json({ error: 'missing text or authorKey' });
+    if (!text || !authorKey) {
+      return res.status(400).json({ error: 'missing text or authorKey' });
+    }
+    
     const words = text.trim().split(/\s+/).length;
-    if (words < 30) return res.status(400).json({ error: 'minimum 30 words required' });
+    if (words < 30) {
+      return res.status(400).json({ 
+        error: 'minimum 30 words required',
+        code: 'MIN_WORDS'
+      });
+    }
+
+    // ── GEMINI VERIFICATION ──
+    const verification = await verifyNarrativeWithGemini(text);
+    
+    if (!verification.isValid) {
+      return res.status(400).json({
+        error: 'This text does not appear to be a proper story or narrative',
+        code: 'NOT_A_STORY',
+        verification: {
+          score: verification.score,
+          reason: verification.reason
+        }
+      });
+    }
+
+    // Block very low quality narratives
+    if (verification.score < CFG.MIN_AI_SCORE) {
+      return res.status(400).json({
+        error: `This text has low narrative quality (score: ${(verification.score * 100).toFixed(0)}%)`,
+        code: 'LOW_QUALITY',
+        verification: {
+          score: verification.score,
+          reason: verification.reason,
+          minRequired: CFG.MIN_AI_SCORE
+        }
+      });
+    }
+
+    // Get profile and create narrative
     const profile = await getProfile(authorKey);
     const n = await createNarrative({
       text: text.trim(),
       authorKey,
       authorName: profile?.name || '',
       authorPic:  profile?.pic  || '',
+      // Store verification data
+      aiVerified: true,
+      aiScore: verification.score,
+      aiReason: verification.reason,
     });
-    res.json(n);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
 
-/* ── PROFILE ROUTES ── */
-async function getProfile(pubkey) {
-  const doc = await db.collection('profiles').doc(pubkey).get();
-  return doc.exists ? doc.data() : null;
-}
+    res.json({ 
+      ...n,
+      verification: {
+        score: verification.score,
+        reason: verification.reason
+      }
+    });
+
+  } catch(e) { 
+    res.status(500).json({ error: e.message }); 
+  }
+});
 
 /* GET /api/profile/:pubkey */
 app.get('/api/profile/:pubkey', async (req, res) => {
@@ -713,6 +856,46 @@ app.post('/api/admin/settings', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── ADMIN: Batch verify all narratives with Gemini ── */
+app.post('/api/admin/verify-all', async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'unauthorized' });
+  if (!genAI) return res.status(400).json({ error: 'Gemini not configured' });
+  
+  try {
+    const narratives = await getNarratives();
+    const results = [];
+    
+    for (const n of narratives) {
+      if (!n.text) continue;
+      const verification = await verifyNarrativeWithGemini(n.text);
+      results.push({
+        id: n.id,
+        text: n.text.slice(0, 50) + '...',
+        score: verification.score,
+        isValid: verification.isValid,
+        reason: verification.reason
+      });
+      
+      // Update narrative with AI score
+      await db.collection('narratives').doc(n.id).update({
+        aiVerified: verification.isValid,
+        aiScore: verification.score,
+        aiReason: verification.reason
+      });
+      
+      // Small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    res.json({ 
+      total: narratives.length,
+      results 
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* POST /api/narratives/:id/buy */
 app.post('/api/narratives/:id/buy', async (req, res) => {
   try {
@@ -754,7 +937,7 @@ app.get('/api/admin/narratives', async (req, res) => {
 });
 
 app.listen(CFG.PORT, () => {
-  console.log(`\n🖊  Narrative Market server → http://localhost:${CFG.PORT}`);
-  console.log(`   MM  wallet : ${mmWallet.publicKey}`);
-  console.log(`   Fee wallet : ${feeWallet.publicKey}\n`);
+  console.log("\n🖊  Narrative Market server → http://localhost:" + CFG.PORT);
+  console.log("   MM  wallet : " + mmWallet.publicKey);
+  console.log("   Fee wallet : " + feeWallet.publicKey + "\n");
 });
