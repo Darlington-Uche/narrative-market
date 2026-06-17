@@ -1,0 +1,329 @@
+<!DOCTYPE hhtml>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NARRATIVE — The Market of Ideas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ════ WALLET MODAL ════ -->
+<div id="walletModal" class="modal-overlay active">
+  <div class="modal-paper">
+    <div class="modal-stamp">NARRATIVE</div>
+    <p class="modal-sub">The market of ideas. Anonymous. Unfiltered. Permanent.</p>
+    <div class="modal-actions">
+      <button class="btn-ink" onclick="createWallet()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New Wallet
+      </button>
+      <button class="btn-ghost" onclick="showImport()">Import Key</button>
+    </div>
+    <div id="importForm" class="import-form hidden">
+      <input type="text" id="importKey" placeholder="paste private key (base58)..." class="ink-input">
+      <button class="btn-ink" onclick="importWallet()">Import</button>
+    </div>
+    <div id="walletInfo" class="wallet-info hidden">
+      <div class="wallet-addr-label">Your Address</div>
+      <div class="wallet-addr" id="walletAddrDisplay"></div>
+      <div class="wallet-warning">⚠ Store your private key. This is devnet — for testing only.</div>
+
+      <div class="profile-setup">
+        <div class="profile-pic-picker" onclick="document.getElementById('profilePicInput').click()">
+          <img id="profilePicPreview" class="profile-pic-img hidden" src="" alt="">
+          <div id="profilePicPlaceholder" class="profile-pic-placeholder">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+        </div>
+        <input type="file" id="profilePicInput" accept="image/*" class="hidden" onchange="handleProfilePicSelect(event)">
+        <input type="text" id="profileNameInput" class="ink-input" placeholder="choose a display name..." maxlength="20">
+      </div>
+
+      <button class="btn-ink" onclick="enterApp()">Enter →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ APP ════ -->
+<div id="app" class="app hidden">
+
+  <!-- TOP WALLET STRIP -->
+  <div class="top-strip">
+    <div class="top-logo">
+      <span class="logo-mark">N</span>
+      <span class="logo-text">ARRATIVE</span>
+    </div>
+    <div class="nav-wallet">
+      <div class="wallet-dot"></div>
+      <span class="wallet-short" id="navWalletShort"></span>
+      <div class="sol-bal" id="navSolBal">— SOL</div>
+      <button class="my-profile-btn" id="myProfileBtn" onclick="openEditProfile()"></button>
+    </div>
+  </div>
+
+  <!-- FLOATING GLASS BOTTOM NAV -->
+  <nav class="glass-nav">
+    <button class="glass-nav-link active" data-page="feed" onclick="switchPage('feed', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      <span>Feed</span>
+    </button>
+    <button class="glass-nav-link" data-page="market" onclick="switchPage('market', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.1-2.6-2.6L7 14.5"/></svg>
+      <span>Narrative</span>
+    </button>
+    <button class="glass-nav-link" data-page="holdings" onclick="switchPage('holdings', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+      <span>Holdings</span>
+    </button>
+    <button class="glass-nav-link" data-page="nextmeta" onclick="switchPage('nextmeta', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+      <span>Next Meta</span>
+    </button>
+  </nav>
+
+
+  <!-- ════ FEED PAGE ════ -->
+  <div id="page-feed" class="page active">
+    <div class="feed-container">
+      <div class="feed-header">
+        <div class="feed-title">THE FEED</div>
+        <div class="feed-subtitle">ideas enter the market here</div>
+        <div class="ruled-line"></div>
+      </div>
+      <div id="feedList" class="feed-list">
+        <div class="feed-loading">loading narratives...</div>
+      </div>
+    </div>
+
+    <!-- Write Button -->
+    <button class="fab-write" onclick="openWriteModal()" title="Write a narrative">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    </button>
+  </div>
+
+  <!-- ════ MARKET PAGE ════ -->
+  <div id="page-market" class="page hidden">
+    <div class="market-header">
+      <div class="market-title">NARRATIVE MARKET</div>
+      <div class="market-sub">ideas priced by belief</div>
+      <div class="ruled-line"></div>
+    </div>
+    <div id="marketList" class="market-list">
+      <div class="feed-loading">loading market...</div>
+    </div>
+  </div>
+
+  <!-- ════ HOLDINGS PAGE ════ -->
+  <div id="page-holdings" class="page hidden">
+    <div class="holdings-container">
+      <div class="holdings-header">
+        <div class="holdings-title">HOLDINGS</div>
+        <div class="holdings-addr-card">
+          <div class="addr-label">Your Devnet Address</div>
+          <div class="addr-row">
+            <span class="addr-full" id="holdingsAddr"></span>
+            <button class="copy-btn" onclick="copyAddr()" title="copy">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+          <div class="addr-deposit-note">↑ deposit devnet SOL here to trade</div>
+          <div class="holdings-sol">
+            <span id="holdingsSol">— SOL</span>
+            <span class="holdings-usd" id="holdingsUsd">— USD</span>
+          </div>
+        </div>
+      </div>
+      <div class="ruled-line"></div>
+      <div class="holdings-section-title">YOUR NARRATIVES</div>
+      <div id="holdingsList" class="holdings-list">
+        <div class="feed-loading">loading holdings...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ NEXT META PAGE ════ -->
+  <div id="page-nextmeta" class="page hidden">
+    <div class="nextmeta-container">
+      <div class="nextmeta-paper">
+        <div class="nextmeta-stamp">NEXT META</div>
+        <div class="nextmeta-lines">
+          <div class="nm-line"></div><div class="nm-line"></div><div class="nm-line"></div>
+          <div class="nm-line"></div><div class="nm-line"></div><div class="nm-line"></div>
+        </div>
+        <div class="nextmeta-msg">something is being written.</div>
+        <div class="nextmeta-sub">check back when the ink dries.</div>
+        <div class="nextmeta-coming">— coming soon —</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ════ WRITE MODAL ════ -->
+<div id="writeModal" class="modal-overlay hidden">
+  <div class="write-paper">
+    <div class="write-header">
+      <span class="write-title">new narrative</span>
+      <button class="close-btn" onclick="closeWriteModal()">✕</button>
+    </div>
+    <div class="write-ruled">
+      <textarea id="narrativeInput" class="narrative-textarea" placeholder="write your narrative here... (min 30 words)" rows="8" oninput="checkWordCount()"></textarea>
+    </div>
+    <div class="write-footer">
+      <span class="word-count" id="wordCount">0 words</span>
+      <div class="write-actions">
+        <button class="btn-ghost" onclick="closeWriteModal()">cancel</button>
+        <button class="btn-ink" id="submitNarrativeBtn" onclick="submitNarrative()" disabled>publish</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ EDIT PROFILE MODAL ════ -->
+<div id="editProfileModal" class="modal-overlay hidden">
+  <div class="write-paper" style="max-width:380px">
+    <div class="write-header">
+      <span class="write-title">your profile</span>
+      <button class="close-btn" onclick="closeEditProfile()">✕</button>
+    </div>
+    <div style="padding:24px 20px;background:var(--paper)">
+      <div class="profile-setup">
+        <div class="profile-pic-picker" onclick="document.getElementById('editProfilePicInput').click()">
+          <img id="editProfilePicPreview" class="profile-pic-img hidden" src="" alt="">
+          <div id="editProfilePicPlaceholder" class="profile-pic-placeholder">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+        </div>
+        <input type="file" id="editProfilePicInput" accept="image/*" class="hidden" onchange="handleEditProfilePicSelect(event)">
+        <input type="text" id="editProfileNameInput" class="ink-input" placeholder="display name..." maxlength="20">
+      </div>
+      <button class="btn-ink" style="width:100%;margin-top:16px;justify-content:center" onclick="saveProfile()">Save Profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ NARRATIVE DETAIL PANEL ════ -->
+<div id="narrativePanel" class="narrative-panel hidden">
+  <div class="panel-inner">
+    <!-- Back -->
+    <button class="glass-back" onclick="closeNarrativePanel()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      back
+    </button>
+
+    <div class="open-book">
+      <!-- Left page: narrative -->
+      <div class="book-page book-left">
+        <div class="page-header">
+          <div class="page-author" id="panelAuthorAvatar"></div>
+          <div class="page-meta">
+            <div class="page-author-name" id="panelAuthorName"></div>
+            <div class="page-date" id="panelDate"></div>
+          </div>
+        </div>
+        <div class="page-ruled">
+          <div class="narrative-full-text" id="panelText"></div>
+        </div>
+        <div class="page-bomb-row">
+          <button class="bomb-btn-large" id="panelBombBtn" onclick="toggleLikeFeed(null)">
+            <svg class="bomb-svg" width="28" height="28" viewBox="0 0 32 32" fill="currentColor"><circle cx="14" cy="18" r="10"/><path d="M14 8 Q20 2 26 6 Q28 10 24 12" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="26" cy="5" r="2" fill="#ff3b00"/></svg>
+            <span id="panelLikes">0</span>
+          </button>
+        </div>
+        <div class="page-number-left">01</div>
+      </div>
+
+      <!-- Right page: chart + trade -->
+      <div class="book-page book-right">
+        <div class="chart-section">
+          <div class="chart-title">PRICE CHART</div>
+          <div class="chart-wrap">
+            <canvas id="narrativeChart" width="340" height="180"></canvas>
+            <div class="price-tip" id="chartPriceTip"></div>
+          </div>
+          <div class="chart-stats">
+            <div class="stat-item">
+              <div class="stat-label">PRICE</div>
+              <div class="stat-val" id="panelPrice">$0.100</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">CHANGE</div>
+              <div class="stat-val" id="panelChange">+0.0%</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">HOLDERS</div>
+              <div class="stat-val" id="panelHolders">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Author profile block -->
+        <div class="author-block" id="authorBlock">
+          <div class="author-block-avatar" id="authorBlockAvatar"></div>
+          <div class="author-block-info">
+            <div class="author-block-name" id="authorBlockName"></div>
+            <div class="author-block-sub">narrative author</div>
+          </div>
+        </div>
+
+        <!-- Buy / Sell trade card -->
+        <div class="trade-card">
+          <div class="trade-tabs">
+            <button class="trade-tab active" id="tabBuy" onclick="switchTradeTab('buy')">BUY</button>
+            <button class="trade-tab" id="tabSell" onclick="switchTradeTab('sell')">SELL</button>
+          </div>
+
+          <!-- BUY slider panel -->
+          <div class="trade-panel" id="buyPanel">
+            <div class="slider-row">
+              <span class="slider-label">AMOUNT</span>
+              <span class="slider-value" id="buyAmountDisplay">0.00 SOL</span>
+            </div>
+            <input type="range" id="buySlider" class="trade-slider" min="0" max="100" value="0" step="1" oninput="updateBuySlider(this.value)">
+            <div class="slider-ticks">
+              <span onclick="setBuyPercent(25)">25%</span>
+              <span onclick="setBuyPercent(50)">50%</span>
+              <span onclick="setBuyPercent(75)">75%</span>
+              <span onclick="setBuyPercent(100)">MAX</span>
+            </div>
+            <div class="trade-balance-note">balance: <span id="buyAvailSol">0.000</span> SOL</div>
+            <button class="trade-confirm-btn buy" onclick="executeBuy()">BUY NARRATIVE</button>
+          </div>
+
+          <!-- SELL slider panel -->
+          <div class="trade-panel hidden" id="sellPanel">
+            <div class="slider-row">
+              <span class="slider-label">SELL</span>
+              <span class="slider-value" id="sellAmountDisplay">0%</span>
+            </div>
+            <input type="range" id="sellSlider" class="trade-slider sell" min="0" max="100" value="0" step="1" oninput="updateSellSlider(this.value)">
+            <div class="slider-ticks">
+              <span onclick="setSellPercent(25)">25%</span>
+              <span onclick="setSellPercent(50)">50%</span>
+              <span onclick="setSellPercent(75)">75%</span>
+              <span onclick="setSellPercent(100)">MAX</span>
+            </div>
+            <div class="trade-balance-note">you hold: <span id="sellAvailTokens">0.00</span> tokens</div>
+            <button class="trade-confirm-btn sell" onclick="executeSell()">SELL NARRATIVE</button>
+          </div>
+
+          <div class="trade-fee">fee: 0.007 SOL per trade</div>
+          <div class="trade-status" id="tradeStatus"></div>
+        </div>
+
+        <div class="page-number-right">02</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ TOAST ════ -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
