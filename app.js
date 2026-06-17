@@ -135,6 +135,21 @@ async function enterApp() {
   document.getElementById('holdingsAddr').textContent = pub;
 
   updateMyProfileBtn();
+
+  // Initialize Novus analytics — identify visitor by wallet public key
+  if (typeof pendo !== 'undefined') {
+    pendo.initialize({
+      visitor: {
+        id: state.wallet.publicKey,
+        displayName: state.profile?.name || '',
+      },
+      account: {
+        id: 'narrative-market',
+        name: 'Narrative Market',
+      },
+    });
+  }
+
   refreshBalance();
   loadFeed();
   setInterval(refreshBalance, 30000);
